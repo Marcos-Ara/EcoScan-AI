@@ -4,6 +4,9 @@
  * Não coloque credenciais do Firebase Admin neste arquivo.
  */
 window.ECOSCAN_API_BASE = 'http://127.0.0.1:8000';
+// Durante o desenvolvimento sem banco/API, deixe false para não gerar erros de rede no console.
+// Quando o backend/database estiver pronto, troque para true.
+window.ECOSCAN_ENABLE_BACKEND = false;
 
 window.ECOSCAN_FIREBASE_CONFIG = {
   apiKey: "AIzaSyBMXRb6XSMES6FRQD1INg0-JjU0SD61iGY",

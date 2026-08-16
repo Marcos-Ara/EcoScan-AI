@@ -95,6 +95,30 @@ def list_detections(limit: int = Query(100, ge=1, le=200), uid: str = Depends(ge
     return {'items': [row_to_detection(row) for row in rows]}
 
 
+@app.delete('/api/detections/{detection_id}')
+def delete_detection(detection_id: int, uid: str = Depends(get_user_uid)):
+    with db() as conn:
+        ensure_user(conn, uid)
+        with conn.cursor() as cur:
+            cur.execute('DELETE FROM detections WHERE id=%s AND uid=%s RETURNING id', (detection_id, uid))
+            row = cur.fetchone()
+        conn.commit()
+    if row is None:
+        raise HTTPException(404, 'Detecção não encontrada.')
+    return {'deleted': True, 'id': row[0]}
+
+
+@app.delete('/api/detections')
+def delete_all_detections(uid: str = Depends(get_user_uid)):
+    with db() as conn:
+        ensure_user(conn, uid)
+        with conn.cursor() as cur:
+            cur.execute('DELETE FROM detections WHERE uid=%s', (uid,))
+            deleted = cur.rowcount
+        conn.commit()
+    return {'deleted': deleted}
+
+
 @app.post('/api/detections')
 def create_detection(payload: DetectionIn, uid: str = Depends(get_user_uid)):
     with db() as conn:
@@ -135,7 +159,14 @@ def register_ecopoint_search(_: EcoPointSearch, uid: str = Depends(get_user_uid)
 
 @app.get('/api/ecopoints')
 async def ecopoints(lat: float = Query(..., ge=-90, le=90), lon: float = Query(..., ge=-180, le=180), radius: int = Query(8000, ge=500, le=25000), uid: str = Depends(get_user_uid)):
-    query = f'''[out:json][timeout:25];(node[amenity=recycling](around:{radius},{lat},{lon});way[amenity=recycling](around:{radius},{lat},{lon});relation[amenity=recycling](around:{radius},{lat},{lon});node[amenity=waste_disposal](around:{radius},{lat},{lon}););out center tags;'''
+    query = f'''[out:json][timeout:25];(
+        node[amenity=recycling](around:{radius},{lat},{lon});
+        way[amenity=recycling](around:{radius},{lat},{lon});
+        relation[amenity=recycling](around:{radius},{lat},{lon});
+        node[amenity=waste_disposal](around:{radius},{lat},{lon});
+        way[amenity=waste_disposal](around:{radius},{lat},{lon});
+        relation[amenity=waste_disposal](around:{radius},{lat},{lon});
+    );out center tags;'''
     try:
         async with httpx.AsyncClient(timeout=30) as client:
             response = await client.post(OVERPASS_URL, data={'data': query})

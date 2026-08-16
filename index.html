@@ -4,16 +4,42 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>EcoScan AI</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 64 64%27%3E%3Crect width=%2764%27 height=%2764%27 rx=%2714%27 fill=%27%230f1712%27/%3E%3Cpath d=%27M32 12a20 20 0 1 0 18 29%27 fill=%27none%27 stroke=%27%2343a047%27 stroke-width=%276%27 stroke-linecap=%27round%27/%3E%3Cpath d=%27M32 12v14l10-7M14 41l12-1-5 10M50 41l-12-1 5 10%27 fill=%27none%27 stroke=%27%2343a047%27 stroke-width=%276%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27/%3E%3C/svg%3E" />
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
   <link rel="stylesheet" href="styles.css" />
+  <script>document.documentElement.dataset.ecoscanTheme = localStorage.getItem("ecoscan-theme") || "dark";</script>
   <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
   <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
 </head>
 <body>
+  <div class="ecoscan-splash" id="ecoscanSplash" aria-label="Abrindo EcoScan AI">
+    <div class="splash-glow splash-glow-a"></div>
+    <div class="splash-glow splash-glow-b"></div>
+    <div class="splash-particles" aria-hidden="true">
+      <span></span><span></span><span></span><span></span><span></span><span></span>
+    </div>
+    <div class="splash-brand">
+      <div class="splash-logo-wrap">
+        <div class="splash-logo-ring"></div>
+        <div class="splash-logo-core">
+          <span class="splash-arrow splash-arrow-1"></span>
+          <span class="splash-arrow splash-arrow-2"></span>
+          <span class="splash-arrow splash-arrow-3"></span>
+          <span class="splash-leaf"></span>
+        </div>
+      </div>
+      <div class="splash-wordmark">
+        <strong>EcoScan <em>AI</em></strong>
+        <span>Escaneie. Descubra. Descarte melhor.</span>
+      </div>
+    </div>
+    <div class="splash-loader" aria-hidden="true"><span></span></div>
+  </div>
+
   <div class="app" id="app">
     <section class="screen active" id="loginScreen">
       <div class="auth-card">
@@ -68,7 +94,7 @@
     <section class="screen" id="homeScreen">
       <header class="topbar">
         <div><p class="muted">Bem-vindo de volta</p><h2>Olá, <span id="userName">usuário</span>!</h2></div>
-        <button class="avatar" id="avatarBtn">M</button>
+        <button class="avatar" id="avatarBtn" type="button" aria-label="Abrir meu perfil">M</button>
       </header>
       <main class="content">
         <div class="stats-grid">
@@ -82,7 +108,7 @@
           <button class="menu-card" data-go="statsScreen"><i data-lucide="bar-chart-3"></i><strong>Estatísticas</strong></button>
           <button class="menu-card" data-go="learnScreen"><i data-lucide="graduation-cap"></i><strong>Aprender</strong></button>
           <button class="menu-card" data-go="achievementsScreen"><i data-lucide="trophy"></i><strong>Conquistas</strong></button>
-          <button class="menu-card wide-card" data-go="mapScreen"><i data-lucide="map-pinned"></i><strong>EcoPontos</strong><small>Encontrar locais de descarte</small></button>
+          <button class="menu-card wide-card eco-map-card" data-go="mapScreen"><span class="menu-card-orb"><i data-lucide="map-pinned"></i></span><span><strong>EcoPontos</strong><small>Encontrar locais de descarte perto de você</small></span><i class="menu-arrow" data-lucide="arrow-up-right"></i></button>
           <button class="menu-card wide-card" data-go="creatorsScreen"><i data-lucide="users"></i><strong>Criadores</strong><small>Quem fez o EcoScan AI</small></button>
         </div>
       </main>
@@ -115,7 +141,7 @@
     </section>
 
     <section class="screen" id="historyScreen">
-      <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Histórico</h2></header>
+      <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Histórico</h2><button class="text-btn danger-text" id="clearHistoryBtn" type="button">Limpar</button></header>
       <main class="list" id="historyList"><p class="empty">Nenhuma detecção salva ainda.</p></main>
     </section>
 
@@ -136,32 +162,104 @@
 
     <section class="screen" id="learnScreen">
       <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Aprender</h2></header>
-      <main class="list">
-        <article class="info-card"><h3>♻️ Reciclagem</h3><p>Separe papel, plástico, vidro e metal sempre que houver coleta seletiva disponível.</p></article>
-        <article class="info-card"><h3>🌱 Compostagem</h3><p>Resíduos orgânicos podem voltar ao ciclo por meio da compostagem.</p></article>
-        <article class="info-card"><h3>🔋 Eletrônicos</h3><p>Celulares, computadores e outros eletrônicos devem ser encaminhados a pontos de coleta.</p></article>
-        <article class="info-card"><h3>🗑️ Descarte</h3><p>Quando um item não puder ser identificado com segurança, confirme a regra local antes de descartar.</p></article>
+      <main class="list learn-list">
+        <article class="info-card learn-guide-first">
+          <div class="learn-guide-icon">🧭</div>
+          <div>
+            <span class="eyebrow">COMO ESCOLHER</span>
+            <h3>Descubra o destino certo</h3>
+            <p>Antes de jogar fora, veja do que o objeto é feito. Depois siga estes passos:</p>
+            <ol class="learn-steps">
+              <li><strong>Identifique o material</strong><span>Veja se é papel, plástico, vidro, metal, orgânico ou outro resíduo.</span></li>
+              <li><strong>Escolha a lixeira</strong><span>Compare com as cores e orientações abaixo.</span></li>
+              <li><strong>Prepare o descarte</strong><span>Esvazie, limpe quando necessário e retire misturas de materiais quando for possível.</span></li>
+              <li><strong>Não encontrou a opção?</strong><span>Procure um ponto de coleta específico no mapa ou confirme a regra da sua cidade.</span></li>
+            </ol>
+          </div>
+        </article>
+
+        <div class="learn-section-heading">
+          <div><span class="eyebrow">GUIA DE COLETA</span><h3>Tipos de lixeira</h3></div>
+          <span class="muted">Aprenda o que vai em cada uma</span>
+        </div>
+
+        <article class="learn-card learn-blue"><div class="learn-bin"><span>🔵</span></div><div><span class="eyebrow">LIXEIRA AZUL</span><h3>Papel e papelão</h3><p>Use para folhas, jornais, revistas, caixas e embalagens de papel. Deixe os materiais secos e sem restos de comida.</p><strong>Não coloque:</strong><small>papel higiênico, papel muito engordurado ou contaminado.</small></div></article>
+        <article class="learn-card learn-red"><div class="learn-bin"><span>🔴</span></div><div><span class="eyebrow">LIXEIRA VERMELHA</span><h3>Plástico</h3><p>Use para garrafas, embalagens, potes e outros plásticos recicláveis. Sempre que possível, esvazie e dê uma pequena enxaguada.</p><strong>Não coloque:</strong><small>objetos com resíduos perigosos ou materiais que a coleta local não aceite.</small></div></article>
+        <article class="learn-card learn-green"><div class="learn-bin"><span>🟢</span></div><div><span class="eyebrow">LIXEIRA VERDE</span><h3>Vidro</h3><p>Use para garrafas, potes e frascos de vidro. O vidro pode ser reciclado várias vezes.</p><strong>Não coloque:</strong><small>espelhos, cerâmica, porcelana ou lâmpadas na coleta comum de vidro.</small></div></article>
+        <article class="learn-card learn-yellow"><div class="learn-bin"><span>🟡</span></div><div><span class="eyebrow">LIXEIRA AMARELA</span><h3>Metal</h3><p>Use para latas, tampas, arames e outros metais recicláveis. Latas devem estar vazias antes do descarte.</p><strong>Dica:</strong><small>separe objetos grandes ou perigosos e procure uma coleta específica.</small></div></article>
+        <article class="learn-card learn-brown"><div class="learn-bin"><span>🟤</span></div><div><span class="eyebrow">LIXEIRA MARROM</span><h3>Orgânicos</h3><p>Use para restos de frutas, verduras, alimentos e resíduos vegetais quando houver coleta de orgânicos ou compostagem.</p><strong>Dica:</strong><small>evite misturar plástico e outros materiais que não se decompõem.</small></div></article>
+        <article class="learn-card learn-gray"><div class="learn-bin"><span>⚫</span></div><div><span class="eyebrow">LIXEIRA CINZA / REJEITOS</span><h3>O que não tem outro destino</h3><p>É para resíduos que não são recicláveis ou compostáveis na coleta disponível.</p><strong>Atenção:</strong><small>pilhas, eletrônicos, lâmpadas e medicamentos precisam de pontos de coleta específicos.</small></div></article>
       </main>
     </section>
 
     <section class="screen" id="achievementsScreen">
       <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Conquistas</h2></header>
-      <main class="achievements-grid">
-        <div class="ach-card" id="ach1"><span>🌱</span><strong>Primeiro Scan</strong><small>1 detecção</small></div>
-        <div class="ach-card locked" id="ach2"><span>♻️</span><strong>Reciclador</strong><small>10 detecções</small></div>
-        <div class="ach-card locked" id="ach3"><span>🌎</span><strong>Guardião Ambiental</strong><small>25 detecções</small></div>
-        <div class="ach-card locked" id="ach4"><span>🏆</span><strong>Mestre Sustentável</strong><small>50 detecções</small></div>
-        <div class="ach-card locked" id="ach5"><span>📍</span><strong>Explorador Verde</strong><small>1 busca de EcoPonto</small></div>
-        <div class="ach-card locked" id="ach6"><span>📚</span><strong>Educador Verde</strong><small>100 detecções</small></div>
+      <main class="content achievements-page">
+        <section class="achievement-hero">
+          <div class="achievement-hero-top"><div><span class="eyebrow">JORNADA ECOLÓGICA</span><h3 id="achievementLevel">🌱 Iniciante Verde</h3><p id="achievementSummary">Cada scan vale pontos. Descubra o material, a lixeira certa e avance de nível.</p></div><div class="achievement-score"><strong id="achievementPoints">0</strong><span>pontos</span></div></div>
+          <div class="progress-track"><div class="progress-fill" id="achievementProgress"></div></div>
+          <div class="achievement-progress-meta"><span id="achievementProgressText">0 / 100 pontos</span><span id="achievementNext">Próximo nível: 100</span></div>
+        </section>
+
+        <section class="mission-card" id="dailyMissionCard">
+          <div class="mission-icon">🎯</div><div class="mission-copy"><span class="eyebrow">DESAFIO</span><strong id="dailyMissionTitle">Primeiro passo</strong><p id="dailyMissionText">Faça 1 scan e descubra o destino correto do objeto.</p></div><span class="mission-reward" id="dailyMissionReward">+10 XP</span>
+        </section>
+
+        <section class="achievement-stats">
+          <div><span id="achievementScans">0</span><small>Scans salvos</small></div>
+          <div><span id="achievementCategories">0</span><small>Materiais descobertos</small></div>
+          <div><span id="achievementRecycled">0</span><small>Recicláveis</small></div>
+        </section>
+
+        <div class="section-title-row"><div><span class="eyebrow">MEDALHAS</span><h3>Continue explorando</h3></div><span class="muted">Conquistas desbloqueáveis</span></div>
+        <div class="achievements-grid">
+          <div class="ach-card" id="ach1"><span>🌱</span><strong>Primeiro Scan</strong><small>Salve sua primeira detecção</small><div class="ach-progress"><i id="achp1"></i></div></div>
+          <div class="ach-card locked" id="ach2"><span>♻️</span><strong>Reciclador</strong><small>10 detecções salvas</small><div class="ach-progress"><i id="achp2"></i></div></div>
+          <div class="ach-card locked" id="ach3"><span>🌎</span><strong>Guardião Ambiental</strong><small>25 detecções salvas</small><div class="ach-progress"><i id="achp3"></i></div></div>
+          <div class="ach-card locked" id="ach4"><span>🏆</span><strong>Mestre Sustentável</strong><small>50 detecções salvas</small><div class="ach-progress"><i id="achp4"></i></div></div>
+          <div class="ach-card locked" id="ach5"><span>📍</span><strong>Explorador Verde</strong><small>Encontrou um local de descarte</small><div class="ach-progress"><i id="achp5"></i></div></div>
+          <div class="ach-card locked" id="ach6"><span>📚</span><strong>Educador Verde</strong><small>100 detecções salvas</small><div class="ach-progress"><i id="achp6"></i></div></div>
+          <div class="ach-card locked" id="ach7"><span>🧠</span><strong>Detetive dos Materiais</strong><small>Descubra 5 tipos de material</small><div class="ach-progress"><i id="achp7"></i></div></div>
+          <div class="ach-card locked" id="ach8"><span>🗑️</span><strong>Destino Certo</strong><small>Salve 10 itens com destino definido</small><div class="ach-progress"><i id="achp8"></i></div></div>
+        </div>
+
+        <section class="disposal-guide">
+          <div class="section-title-row"><div><span class="eyebrow">GUIA RÁPIDO</span><h3>Onde esse material vai?</h3></div><i data-lucide="recycle"></i></div>
+          <div class="guide-grid">
+            <div class="guide-item"><span>🔵</span><strong>Papel</strong><small>Azul · reciclagem</small></div>
+            <div class="guide-item"><span>🔴</span><strong>Plástico</strong><small>Vermelha · reciclagem</small></div>
+            <div class="guide-item"><span>🟢</span><strong>Vidro</strong><small>Verde · reciclagem</small></div>
+            <div class="guide-item"><span>🟡</span><strong>Metal</strong><small>Amarela · reciclagem</small></div>
+            <div class="guide-item"><span>🟤</span><strong>Orgânico</strong><small>Marrom · compostagem</small></div>
+            <div class="guide-item"><span>📦</span><strong>Eletrônico</strong><small>Coleta especial</small></div>
+          </div>
+        </section>
       </main>
     </section>
 
     <section class="screen" id="mapScreen">
-      <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>EcoPontos</h2></header>
+      <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Locais de Descarte</h2></header>
       <main class="map-page">
-        <div class="map-toolbar"><p id="mapStatus" class="muted">Use sua localização para encontrar pontos de reciclagem e descarte próximos.</p><button class="btn btn-primary" id="locateBtn" type="button">Encontrar próximos</button></div>
-        <div id="ecoMap" class="map"></div>
-        <div id="mapList" class="map-list"><p class="empty">Nenhum ponto carregado.</p></div>
+        <section class="map-shell">
+          <div id="ecoMap" class="map"></div>
+          <div class="map-floating-top">
+            <div class="map-search-chip"><i data-lucide="map-pin"></i><span id="mapStatus">Toque no botão para localizar você e encontrar pontos por perto.</span></div>
+            <button class="icon-btn map-locate-fab" id="locateBtn" type="button" aria-label="Localizar você"><i data-lucide="crosshair"></i></button>
+          </div>
+          <div class="map-scale-note"><i data-lucide="navigation"></i><span>Você está aqui</span></div>
+        </section>
+        <section class="nearby-section">
+          <div class="nearby-heading"><div><span class="eyebrow">POR PERTO</span><h3>Onde você pode descartar</h3><p>Veja lixeiras públicas, pontos de descarte, reciclagem e EcoPontos próximos.</p></div><span class="nearby-count" id="nearbyCount">0</span></div>
+          <div class="map-filter-row">
+            <button class="map-filter active" type="button" data-map-filter="all">Todos</button>
+            <button class="map-filter" type="button" data-map-filter="Lixeira">Lixeiras</button>
+            <button class="map-filter" type="button" data-map-filter="Reciclagem">Reciclagem</button>
+            <button class="map-filter" type="button" data-map-filter="Descarte">Descarte</button>
+          </div>
+          <div class="map-route-tip"><i data-lucide="route"></i><span>Toque em um local para ver o caminho, a distância e abrir o Maps.</span></div>
+          <div id="mapList" class="map-list"><p class="empty">Toque no botão de localização para procurar locais próximos.</p></div>
+        </section>
+        <div id="routeInfo" class="route-info" hidden></div>
       </main>
     </section>
 
@@ -170,16 +268,76 @@
       <main class="list" id="creatorsList"><p class="empty">Edite a lista de colaboradores em creators.js.</p></main>
     </section>
 
+    <section class="screen" id="profileScreen">
+      <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Meu perfil</h2></header>
+      <main class="profile-page">
+        <section class="profile-hero">
+          <div class="profile-avatar-wrap">
+            <button class="profile-avatar" id="profileAvatarBtn" type="button" aria-label="Alterar foto de perfil">M</button>
+            <span class="profile-avatar-edit"><i data-lucide="camera"></i></span>
+          </div>
+          <div>
+            <h3 id="profileNamePreview">Usuário</h3>
+            <p id="profileEmailPreview" class="muted">seu@email.com</p>
+          </div>
+          <input id="profilePhotoInput" type="file" accept="image/*" hidden />
+        </section>
+
+        <section class="profile-card">
+          <div class="profile-card-head"><div><span class="eyebrow">CONTA</span><h3>Dados pessoais</h3></div><i data-lucide="user-round"></i></div>
+          <form id="profileForm" class="form profile-form" novalidate>
+            <label>Nome<input id="profileNameInput" type="text" autocomplete="name" placeholder="Seu nome" required /></label>
+            <label>E-mail<input id="profileEmailInput" type="email" autocomplete="email" placeholder="seu@email.com" required /></label>
+            <button class="btn btn-primary" type="submit" id="profileSaveBtn">Salvar alterações</button>
+            <div class="auth-message" id="profileMessage" role="alert" aria-live="polite"></div>
+          </form>
+        </section>
+
+        <section class="profile-card">
+          <div class="profile-card-head"><div><span class="eyebrow">SEGURANÇA</span><h3>Alterar senha</h3></div><i data-lucide="lock-keyhole"></i></div>
+          <form id="passwordForm" class="form profile-form" novalidate>
+            <label>Senha atual<input id="currentPasswordInput" type="password" autocomplete="current-password" placeholder="Sua senha atual" required /></label>
+            <label>Nova senha<input id="newPasswordInput" type="password" autocomplete="new-password" placeholder="Mínimo de 6 caracteres" minlength="6" required /></label>
+            <label>Confirmar nova senha<input id="confirmNewPasswordInput" type="password" autocomplete="new-password" placeholder="Repita a nova senha" minlength="6" required /></label>
+            <button class="btn btn-outline" type="submit" id="passwordSaveBtn">Atualizar senha</button>
+            <button class="link-btn" type="button" id="profileResetPasswordBtn">Receber link de recuperação por e-mail</button>
+            <div class="auth-message" id="passwordMessage" role="alert" aria-live="polite"></div>
+          </form>
+        </section>
+      </main>
+    </section>
+
     <section class="screen" id="settingsScreen">
       <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Configurações</h2></header>
       <main class="settings-list">
-        <div class="setting-row"><span>Tema escuro</span><button class="switch" id="themeSwitch" aria-label="Alternar tema"></button></div>
-        <div class="setting-row"><span>Notificações</span><button class="switch on" id="notifSwitch" aria-label="Notificações"></button></div>
+        <div class="setting-row"><span><strong>Tema</strong><small class="setting-hint">Escuro por padrão</small></span><button class="switch" id="themeSwitch" aria-label="Alternar tema"></button></div>
+        <div class="setting-row"><span>Notificações</span><button class="switch on" id="notifSwitch" aria-label="Notificações"></button></div><div class="setting-row"><span>Sons do EcoScan</span><button class="switch on" id="soundSwitch" aria-label="Sons do EcoScan"></button></div>
+        <button class="setting-row plain" data-go="profileScreen"><span><strong>Meu perfil</strong><small class="setting-hint">Nome, foto, e-mail e senha</small></span><i data-lucide="chevron-right"></i></button>
         <div class="setting-row plain">Idioma: Português (BR)</div>
         <button class="setting-row plain" data-go="creatorsScreen">Criadores do projeto</button>
         <button class="setting-row plain" data-go="mapScreen">Abrir EcoPontos</button>
         <button class="setting-row danger" id="logoutBtn">Sair da Conta</button>
       </main>
+    </section>
+  </div>
+
+  <div class="modal-backdrop" id="scanDetailModal" hidden>
+    <section class="scan-detail-modal" role="dialog" aria-modal="true" aria-labelledby="scanDetailTitle">
+      <button class="icon-btn modal-close" id="closeScanDetailBtn" type="button" aria-label="Fechar"><i data-lucide="x"></i></button>
+      <div class="scan-detail-photo-wrap"><img id="scanDetailPhoto" alt="Foto do objeto escaneado" hidden><div class="scan-detail-photo-placeholder" id="scanDetailPhotoPlaceholder"><i data-lucide="scan-line"></i><span>Sem foto salva</span></div></div>
+      <div class="scan-detail-body">
+        <span class="eyebrow" id="scanDetailEyebrow">DETECÇÃO SALVA</span>
+        <h2 id="scanDetailTitle">Objeto</h2>
+        <p class="scan-detail-time" id="scanDetailDate">—</p>
+        <div class="scan-detail-grid">
+          <div><span>Tipo</span><strong id="scanDetailType">—</strong></div>
+          <div><span>Lixeira</span><strong id="scanDetailBin">—</strong></div>
+          <div><span>Destino</span><strong id="scanDetailDest">—</strong></div>
+          <div><span>Decomposição</span><strong id="scanDetailTime">—</strong></div>
+        </div>
+        <div class="scan-location-card" id="scanDetailLocation"><i data-lucide="map-pin"></i><div><strong>Local da captura</strong><p id="scanDetailCoords">Localização não registrada.</p></div></div>
+        <div class="scan-detail-actions"><button class="btn btn-primary" id="scanDetailMapBtn" type="button">Ver no mapa</button><button class="btn btn-outline" id="scanDetailDeleteBtn" type="button">Excluir</button><button class="btn btn-outline" id="scanDetailCloseBtn" type="button">Fechar</button></div>
+      </div>
     </section>
   </div>
 
