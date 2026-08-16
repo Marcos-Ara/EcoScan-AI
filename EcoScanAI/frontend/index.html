@@ -1,0 +1,193 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>EcoScan AI</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <link rel="stylesheet" href="styles.css" />
+  <script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.22.0"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+</head>
+<body>
+  <div class="app" id="app">
+    <section class="screen active" id="loginScreen">
+      <div class="auth-card">
+        <div class="logo">♻️</div>
+        <h1>EcoScan AI</h1>
+        <p>Entre na sua conta</p>
+        <form id="loginForm" class="form" novalidate>
+          <label>E-mail<input id="loginEmail" type="email" placeholder="seu@email.com" autocomplete="email" required /></label>
+          <label>Senha<input id="loginPassword" type="password" placeholder="••••••••" autocomplete="current-password" required /></label>
+          <button type="submit" class="btn btn-primary" id="loginBtn">Entrar</button>
+          <button type="button" class="btn btn-outline" id="goRegisterBtn">Criar Conta</button>
+          <button type="button" class="link-btn" id="forgotPasswordBtn">Recuperar Senha</button>
+          <div class="auth-divider"><span>ou</span></div>
+          <button type="button" class="btn google-btn" id="googleLoginBtn"><span class="google-icon">G</span>Continuar com Google</button>
+          <div class="auth-message" id="loginMessage" role="alert" aria-live="polite"></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="screen" id="registerScreen">
+      <div class="auth-card">
+        <div class="logo">♻️</div>
+        <h1>Criar Conta</h1>
+        <p>Comece a usar o EcoScan AI</p>
+        <form id="registerForm" class="form" novalidate>
+          <label>Nome<input id="registerName" type="text" placeholder="Seu nome" autocomplete="name" required /></label>
+          <label>E-mail<input id="registerEmail" type="email" placeholder="seu@email.com" autocomplete="email" required /></label>
+          <label>Senha<input id="registerPassword" type="password" placeholder="Mínimo de 6 caracteres" autocomplete="new-password" minlength="6" required /></label>
+          <label>Confirmar senha<input id="registerPasswordConfirm" type="password" placeholder="Repita a senha" autocomplete="new-password" minlength="6" required /></label>
+          <button type="submit" class="btn btn-primary" id="registerBtn">Criar Conta</button>
+          <button type="button" class="btn google-btn" id="googleRegisterBtn"><span class="google-icon">G</span>Continuar com Google</button>
+          <button type="button" class="link-btn" id="backToLoginBtn">Já tenho uma conta</button>
+          <div class="auth-message" id="registerMessage" role="alert" aria-live="polite"></div>
+        </form>
+      </div>
+    </section>
+
+    <section class="screen" id="verifyScreen">
+      <div class="auth-card">
+        <div class="logo">✉️</div>
+        <h1>Verifique seu e-mail</h1>
+        <p id="verifyDescription">Enviamos um link de confirmação para o seu e-mail.</p>
+        <div class="form verify-actions">
+          <button type="button" class="btn btn-primary" id="checkVerificationBtn">Já verifiquei meu e-mail</button>
+          <button type="button" class="btn btn-outline" id="resendVerificationBtn">Reenviar e-mail</button>
+          <button type="button" class="link-btn" id="verifyLogoutBtn">Sair</button>
+          <div class="auth-message" id="verifyMessage" role="alert" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="screen" id="homeScreen">
+      <header class="topbar">
+        <div><p class="muted">Bem-vindo de volta</p><h2>Olá, <span id="userName">usuário</span>!</h2></div>
+        <button class="avatar" id="avatarBtn">M</button>
+      </header>
+      <main class="content">
+        <div class="stats-grid">
+          <div class="stat-card"><span id="totalCount">0</span><small>Detectados</small></div>
+          <div class="stat-card blue"><span id="recycleCount">0</span><small>Recicláveis</small></div>
+          <div class="stat-card amber"><span id="organicCount">0</span><small>Orgânicos</small></div>
+        </div>
+        <button class="scan-btn" id="startScanBtn"><i data-lucide="scan"></i>Iniciar Escaneamento</button>
+        <div class="menu-grid">
+          <button class="menu-card" data-go="historyScreen"><i data-lucide="clock-3"></i><strong>Histórico</strong></button>
+          <button class="menu-card" data-go="statsScreen"><i data-lucide="bar-chart-3"></i><strong>Estatísticas</strong></button>
+          <button class="menu-card" data-go="learnScreen"><i data-lucide="graduation-cap"></i><strong>Aprender</strong></button>
+          <button class="menu-card" data-go="achievementsScreen"><i data-lucide="trophy"></i><strong>Conquistas</strong></button>
+          <button class="menu-card wide-card" data-go="mapScreen"><i data-lucide="map-pinned"></i><strong>EcoPontos</strong><small>Encontrar locais de descarte</small></button>
+          <button class="menu-card wide-card" data-go="creatorsScreen"><i data-lucide="users"></i><strong>Criadores</strong><small>Quem fez o EcoScan AI</small></button>
+        </div>
+      </main>
+      <nav class="bottom-nav">
+        <button class="nav-item active" data-go="homeScreen"><i data-lucide="home"></i><span>Home</span></button>
+        <button class="nav-item" data-go="cameraScreen"><i data-lucide="scan"></i><span>Scan</span></button>
+        <button class="nav-item" data-go="mapScreen"><i data-lucide="map"></i><span>Mapa</span></button>
+        <button class="nav-item" data-go="settingsScreen"><i data-lucide="settings"></i><span>Config</span></button>
+      </nav>
+    </section>
+
+    <section class="screen" id="cameraScreen">
+      <div class="camera-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><span class="live-pill">● AO VIVO</span></div>
+      <div class="camera-stage"><video id="cameraFeed" autoplay playsinline muted></video><canvas id="overlay"></canvas><div class="camera-fallback" id="cameraFallback" hidden><i data-lucide="camera-off"></i><h3>Não foi possível abrir a câmera</h3><p>Você também pode selecionar uma imagem abaixo.</p></div></div>
+      <div class="det-card">
+        <div class="drag-bar"></div>
+        <h3 id="detName">Nenhum objeto detectado</h3>
+        <div class="det-grid">
+          <div><span>Tipo</span><strong id="detType">-</strong></div>
+          <div><span>Lixeira</span><strong id="detBin">-</strong></div>
+          <div><span>Destino</span><strong id="detDest">-</strong></div>
+          <div><span>Decomposição</span><strong id="detTime">-</strong></div>
+        </div>
+        <p id="detFact" class="fact">Aponte para um objeto ou selecione uma imagem.</p>
+        <div class="confidence-line"><span>Confiança</span><strong id="detConfidence">-</strong></div>
+        <button class="btn btn-primary" id="saveBtn">Salvar Detecção</button>
+        <button class="btn btn-outline" id="selectImageBtn" type="button">Selecionar imagem</button>
+        <input id="imageInput" type="file" accept="image/*" hidden />
+      </div>
+    </section>
+
+    <section class="screen" id="historyScreen">
+      <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Histórico</h2></header>
+      <main class="list" id="historyList"><p class="empty">Nenhuma detecção salva ainda.</p></main>
+    </section>
+
+    <section class="screen" id="statsScreen">
+      <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Estatísticas</h2></header>
+      <main class="content">
+        <div class="panel"><h3>Distribuição por categoria</h3><div class="bars">
+          <div class="bar-row"><div class="bar-head"><span>Orgânico</span><span id="sbOrganic">0</span></div><div class="bar-track"><div class="bar-fill amber" id="barOrganic"></div></div></div>
+          <div class="bar-row"><div class="bar-head"><span>Papel</span><span id="sbPaper">0</span></div><div class="bar-track"><div class="bar-fill blue" id="barPaper"></div></div></div>
+          <div class="bar-row"><div class="bar-head"><span>Plástico</span><span id="sbPlastic">0</span></div><div class="bar-track"><div class="bar-fill red" id="barPlastic"></div></div></div>
+          <div class="bar-row"><div class="bar-head"><span>Vidro</span><span id="sbGlass">0</span></div><div class="bar-track"><div class="bar-fill green" id="barGlass"></div></div></div>
+          <div class="bar-row"><div class="bar-head"><span>Metal</span><span id="sbMetal">0</span></div><div class="bar-track"><div class="bar-fill yellow" id="barMetal"></div></div></div>
+          <div class="bar-row"><div class="bar-head"><span>Rejeito</span><span id="sbReject">0</span></div><div class="bar-track"><div class="bar-fill gray" id="barReject"></div></div></div>
+        </div></div>
+        <div class="panel"><h3>Nível ecológico</h3><strong class="eco-level" id="ecoLevel">🌱 Iniciante Verde</strong><p class="muted" id="ecoPoints">0 pontos</p></div>
+      </main>
+    </section>
+
+    <section class="screen" id="learnScreen">
+      <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Aprender</h2></header>
+      <main class="list">
+        <article class="info-card"><h3>♻️ Reciclagem</h3><p>Separe papel, plástico, vidro e metal sempre que houver coleta seletiva disponível.</p></article>
+        <article class="info-card"><h3>🌱 Compostagem</h3><p>Resíduos orgânicos podem voltar ao ciclo por meio da compostagem.</p></article>
+        <article class="info-card"><h3>🔋 Eletrônicos</h3><p>Celulares, computadores e outros eletrônicos devem ser encaminhados a pontos de coleta.</p></article>
+        <article class="info-card"><h3>🗑️ Descarte</h3><p>Quando um item não puder ser identificado com segurança, confirme a regra local antes de descartar.</p></article>
+      </main>
+    </section>
+
+    <section class="screen" id="achievementsScreen">
+      <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Conquistas</h2></header>
+      <main class="achievements-grid">
+        <div class="ach-card" id="ach1"><span>🌱</span><strong>Primeiro Scan</strong><small>1 detecção</small></div>
+        <div class="ach-card locked" id="ach2"><span>♻️</span><strong>Reciclador</strong><small>10 detecções</small></div>
+        <div class="ach-card locked" id="ach3"><span>🌎</span><strong>Guardião Ambiental</strong><small>25 detecções</small></div>
+        <div class="ach-card locked" id="ach4"><span>🏆</span><strong>Mestre Sustentável</strong><small>50 detecções</small></div>
+        <div class="ach-card locked" id="ach5"><span>📍</span><strong>Explorador Verde</strong><small>1 busca de EcoPonto</small></div>
+        <div class="ach-card locked" id="ach6"><span>📚</span><strong>Educador Verde</strong><small>100 detecções</small></div>
+      </main>
+    </section>
+
+    <section class="screen" id="mapScreen">
+      <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>EcoPontos</h2></header>
+      <main class="map-page">
+        <div class="map-toolbar"><p id="mapStatus" class="muted">Use sua localização para encontrar pontos de reciclagem e descarte próximos.</p><button class="btn btn-primary" id="locateBtn" type="button">Encontrar próximos</button></div>
+        <div id="ecoMap" class="map"></div>
+        <div id="mapList" class="map-list"><p class="empty">Nenhum ponto carregado.</p></div>
+      </main>
+    </section>
+
+    <section class="screen" id="creatorsScreen">
+      <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Criadores</h2></header>
+      <main class="list" id="creatorsList"><p class="empty">Edite a lista de colaboradores em creators.js.</p></main>
+    </section>
+
+    <section class="screen" id="settingsScreen">
+      <header class="section-header"><button class="icon-btn" data-go="homeScreen"><i data-lucide="arrow-left"></i></button><h2>Configurações</h2></header>
+      <main class="settings-list">
+        <div class="setting-row"><span>Tema escuro</span><button class="switch" id="themeSwitch" aria-label="Alternar tema"></button></div>
+        <div class="setting-row"><span>Notificações</span><button class="switch on" id="notifSwitch" aria-label="Notificações"></button></div>
+        <div class="setting-row plain">Idioma: Português (BR)</div>
+        <button class="setting-row plain" data-go="creatorsScreen">Criadores do projeto</button>
+        <button class="setting-row plain" data-go="mapScreen">Abrir EcoPontos</button>
+        <button class="setting-row danger" id="logoutBtn">Sair da Conta</button>
+      </main>
+    </section>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/10.12.5/firebase-auth-compat.js"></script>
+  <script src="config.js"></script>
+  <script src="creators.js"></script>
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:17
+    container_name: ecoscan-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ecoscan
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5432:5432"
+    volumes:
+      - ecoscan_pg:/var/lib/postgresql/data
+      - ./database/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+  api:
+    build: ./backend
+    container_name: ecoscan-api
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgresql://postgres:postgres@postgres:5432/ecoscan
+      DEV_MODE: "true"
+      DEV_UID: dev-user
+    ports:
+      - "8000:8000"
+    depends_on:
+      - postgres
+volumes:
+  ecoscan_pg:
