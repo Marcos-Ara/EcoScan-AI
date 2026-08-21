@@ -68,37 +68,23 @@ let mapItems = [];
 let activeMapFilter = 'all';
 let selectedHistoryItem = null;
 
-const WASTE_RULES = {
-  papel: { category: 'Papel', bin: '🔵 Azul', dest: 'Reciclagem', time: '3–6 meses', fact: 'Papel e papelão devem estar, de preferência, secos e sem restos de comida.' },
-  plastico: { category: 'Plástico', bin: '🔴 Vermelha', dest: 'Reciclagem', time: 'Aproximadamente 400–500 anos', fact: 'Plásticos podem permanecer no ambiente por centenas de anos; sempre que possível, encaminhe à reciclagem.' },
-  vidro: { category: 'Vidro', bin: '🟢 Verde', dest: 'Reciclagem', time: 'Aproximadamente 4.000 anos ou mais', fact: 'O vidro pode levar milhares de anos para se decompor e pode ser reciclado repetidas vezes.' },
-  metal: { category: 'Metal', bin: '🟡 Amarela', dest: 'Reciclagem', time: 'Aproximadamente 50–500 anos', fact: 'O tempo varia bastante conforme o metal; latas e outros metais devem ser encaminhados à reciclagem.' },
-  organico: { category: 'Orgânico', bin: '🟤 Marrom', dest: 'Compostagem', time: 'Aproximadamente 2–6 meses', fact: 'Restos de alimentos e partes vegetais podem se decompor em poucos meses em condições adequadas de compostagem.' },
-  eletronico: { category: 'Eletrônico', bin: '📦 Coleta especial', dest: 'Logística reversa', time: 'Não recomendado calcular', fact: 'Eletrônicos não devem ser descartados no lixo comum; procure um ponto de coleta ou logística reversa.' },
-  rejeito: { category: 'Rejeito', bin: '⚫ Cinza/Preta', dest: 'Rejeitos', time: 'Varia conforme o material', fact: 'Use esta categoria somente quando o item não tiver um destino reciclável conhecido.' },
-  indeterminado: { category: 'Indeterminado', bin: '📌 Verificar', dest: 'Consulta local', time: '—', fact: 'A IA reconheceu o objeto, mas não conseguiu indicar um descarte seguro automaticamente.' }
-};
-
 const CATEGORY_COLORS = {
-  Orgânico: '#8b5a2b', Papel: '#2f6ef3', Plástico: '#df4b42', Vidro: '#43a047', Metal: '#d6a800', Eletrônico: '#7c3aed', Rejeito: '#5b6068', Indeterminado: '#43a047'
+  Orgânico: '#8b5a2b',
+  Papel: '#2f6ef3',
+  Plástico: '#df4b42',
+  Vidro: '#43a047',
+  Metal: '#d6a800',
+  Eletrônico: '#7c3aed',
+  Rejeito: '#5b6068',
+  Indeterminado: '#6b7280'
 };
 
+// Classes do modelo servem apenas como sinal bruto de detecção.
+// Nome, material, categoria, lixeira, destino e conteúdo educativo
+// precisam vir do Supabase. Não existe mais fallback local de item.
 const CLASS_NAMES_PT = {
   person:'Pessoa', bicycle:'Bicicleta', car:'Carro', motorcycle:'Motocicleta', airplane:'Avião', bus:'Ônibus', train:'Trem', truck:'Caminhão', boat:'Barco', traffic_light:'Semáforo', fire_hydrant:'Hidrante', stop_sign:'Placa de parada', parking_meter:'Parquímetro', bench:'Banco', bird:'Pássaro', cat:'Gato', dog:'Cachorro', horse:'Cavalo', sheep:'Ovelha', cow:'Vaca', elephant:'Elefante', bear:'Urso', zebra:'Zebra', giraffe:'Girafa', backpack:'Mochila', umbrella:'Guarda-chuva', handbag:'Bolsa', tie:'Gravata', suitcase:'Mala', frisbee:'Frisbee', skis:'Esquis', snowboard:'Snowboard', sports_ball:'Bola', kite:'Pipa', baseball_bat:'Taco de beisebol', baseball_glove:'Luva de beisebol', skateboard:'Skate', surfboard:'Prancha de surfe', tennis_racket:'Raquete de tênis', bottle:'Garrafa', wine_glass:'Taça', cup:'Copo', fork:'Garfo', knife:'Faca', spoon:'Colher', bowl:'Tigela', banana:'Banana', apple:'Maçã', sandwich:'Sanduíche', orange:'Laranja', broccoli:'Brócolis', carrot:'Cenoura', hot_dog:'Cachorro-quente', pizza:'Pizza', donut:'Rosquinha', cake:'Bolo', chair:'Cadeira', couch:'Sofá', potted_plant:'Planta', bed:'Cama', dining_table:'Mesa de jantar', toilet:'Vaso sanitário', tv:'Televisão', laptop:'Notebook', mouse:'Mouse', remote:'Controle remoto', keyboard:'Teclado', cell_phone:'Celular', microwave:'Micro-ondas', oven:'Forno', toaster:'Torradeira', sink:'Pia', refrigerator:'Geladeira', book:'Livro', clock:'Relógio', vase:'Vaso', scissors:'Tesoura', teddy_bear:'Urso de pelúcia', hair_drier:'Secador de cabelo', toothbrush:'Escova de dentes'
 };
-
-const ALIASES = {
-  banana: 'organico', apple: 'organico', orange: 'organico', broccoli: 'organico', carrot: 'organico', sandwich: 'organico', 'hot dog': 'organico', pizza: 'organico', donut: 'organico', cake: 'organico',
-  bottle: 'plastico', plastic_bottle: 'plastico', cup: 'indeterminado', bowl: 'indeterminado',
-  'wine glass': 'vidro', vase: 'vidro',
-  book: 'papel',
-  laptop: 'eletronico', mouse: 'eletronico', keyboard: 'eletronico', 'cell phone': 'eletronico', tv: 'eletronico', remote: 'eletronico', microwave: 'eletronico', oven: 'eletronico', toaster: 'eletronico', refrigerator: 'eletronico',
-  fork: 'metal', knife: 'metal', spoon: 'metal', scissors: 'metal',
-};
-
-init();
-initializeSupabase();
-initializeFirebase();
 
 function init() {
   if (splash) {
@@ -712,40 +698,140 @@ async function handleImageSelection(event) {
 }
 function loadImageFile(file) { return new Promise((resolve,reject) => { const url = URL.createObjectURL(file); const img = new Image(); img.onload=()=>{URL.revokeObjectURL(url); resolve(img)}; img.onerror=()=>{URL.revokeObjectURL(url); reject(new Error('Não foi possível abrir a imagem.'))}; img.src=url; }); }
 
+function getDatabaseRecordForLabel(label) {
+  const normalized = normalizeSupabaseAlias(label);
+  return supabaseObjectCache.get(normalized) || null;
+}
+
+function getPredictionColor(prediction) {
+  const record = getDatabaseRecordForLabel(prediction.class);
+  return record?.category_color_hex || CATEGORY_COLORS[record?.category_name] || '#6b7280';
+}
+
+function getPredictionDisplayName(prediction) {
+  const record = getDatabaseRecordForLabel(prediction.class);
+  if (record?.databaseName) return record.databaseName;
+  return 'Consultando base...';
+}
+
 function drawPredictions(predictions) {
   resizeOverlay();
   if (!overlay) return;
-  const ctx = overlay.getContext('2d'); ctx.clearRect(0,0,overlay.width,overlay.height);
-  const top = predictions.slice(0,3);
+  const ctx = overlay.getContext('2d');
+  ctx.clearRect(0, 0, overlay.width, overlay.height);
+  const top = (predictions || []).slice(0, 3);
   if (!top.length) return;
-  ctx.font = `700 ${Math.max(14, Math.round(overlay.width / 42))}px Outfit`; ctx.lineWidth = 3;
+
+  ctx.font = `700 ${Math.max(14, Math.round(overlay.width / 42))}px Outfit`;
+  ctx.lineWidth = 3;
+
   top.forEach(pred => {
-    const [x,y,width,height] = pred.bbox;
-    const text = `${prettifyClassName(pred.class)} ${(pred.score*100).toFixed(0)}%`;
-    const rule = resolveWasteRule(pred.class);
-    const color = CATEGORY_COLORS[rule.category] || '#43a047';
-    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.strokeRect(x,y,width,height);
-    const tw = ctx.measureText(text).width; const ty = Math.max(24,y-10); ctx.fillRect(x,ty-ctx.measureText('Ag').actualBoundingBoxAscent-7,tw+12,30);
-    ctx.fillStyle='#fff'; ctx.fillText(text,x+6,ty+3);
+    const [x, y, width, height] = pred.bbox;
+    const text = `${getPredictionDisplayName(pred)} ${(pred.score * 100).toFixed(0)}%`;
+    const color = getPredictionColor(pred);
+
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.strokeRect(x, y, width, height);
+
+    const tw = ctx.measureText(text).width;
+    const ty = Math.max(24, y - 10);
+    ctx.fillRect(
+      x,
+      ty - ctx.measureText('Ag').actualBoundingBoxAscent - 7,
+      tw + 12,
+      30
+    );
+
+    ctx.fillStyle = '#fff';
+    ctx.fillText(text, x + 6, ty + 3);
   });
 }
 
 function updateDetectionCard(predictions) {
   const best = predictions?.[0];
-  if (!best || best.score < 0.30) {
+
+  if (!best || best.score < 0.15) {
     lastDetectionData = null;
-    setDetectionCard({ name:'Nenhum objeto detectado', category:'-', bin:'-', dest:'-', time:'-', fact:'Aponte para um objeto reconhecido ou selecione outra imagem.', confidence:null });
+    setDetectionCard({
+      name: 'Nenhum objeto detectado',
+      category: '-',
+      bin: '-',
+      dest: '-',
+      time: '-',
+      fact: 'Aponte para um objeto reconhecido ou selecione outra imagem.',
+      confidence: null
+    });
+    return;
+  }
+
+  if (!supabaseReady) {
+    lastDetectionData = null;
+    setDetectionCard({
+      name: prettifyClassName(best.class),
+      category: '-',
+      bin: '-',
+      dest: '-',
+      time: '-',
+      fact: 'A base de conhecimento do Supabase não está disponível.',
+      confidence: best.score
+    });
     return;
   }
 
   const normalized = normalizeSupabaseAlias(best.class);
-  const dbRule = supabaseObjectCache.get(normalized);
-  if (supabaseReady && !supabaseObjectCache.has(normalized)) queueSupabaseClassification(best.class);
+  const cached = supabaseObjectCache.get(normalized);
 
-  const rule = dbRule || resolveWasteRule(best.class);
-  const displayName = dbRule?.databaseName || prettifyClassName(best.class);
-  lastDetectionData = {
-    name: displayName,
+  if (cached === undefined) {
+    lastDetectionData = null;
+    setDetectionCard({
+      name: 'Consultando base...',
+      category: '-',
+      bin: '-',
+      dest: '-',
+      time: '-',
+      fact: `A IA detectou ${prettifyClassName(best.class)}, consultando o banco de dados EcoScan.`,
+      confidence: best.score
+    });
+    queueSupabaseClassification(best.class);
+    return;
+  }
+
+  if (cached?.status === 'not-found') {
+    lastDetectionData = null;
+    setDetectionCard({
+      name: 'Objeto não cadastrado',
+      category: '-',
+      bin: '-',
+      dest: '-',
+      time: '-',
+      fact: `A classe "${prettifyClassName(best.class)}" foi detectada pelo modelo, mas ainda não possui correspondência na base de conhecimento.`,
+      confidence: best.score
+    });
+    return;
+  }
+
+  const dbRule = cached;
+  const rule = dbRule.specialWasteUi || (dbRule.category_name ? {
+    category: dbRule.category_name,
+    bin: dbRule.bin_name
+      ? `${dbRule.bin_color_name ? dbRule.bin_color_name + ' ' : ''}${dbRule.bin_name}`
+      : '-',
+    dest: dbRule.destination_name || '-',
+    time: dbRule.decomposition_text || '—',
+    fact: dbRule.educational_text || dbRule.recommendation || 'Informação obtida da base de conhecimento EcoScan.'
+  } : {
+    category: 'Indeterminado',
+    bin: '-',
+    dest: '-',
+    time: '—',
+    fact: dbRule.variant_count > 0
+      ? `A base encontrou ${dbRule.variant_count} variante(s) para este objeto. São necessárias evidências adicionais para definir o material.`
+      : 'O objeto está cadastrado, mas ainda não possui material ou regra de descarte definida na base.'
+  });
+
+  const result = {
+    name: dbRule.databaseName,
     category: rule.category,
     bin: rule.bin,
     dest: rule.dest,
@@ -753,19 +839,26 @@ function updateDetectionCard(predictions) {
     fact: rule.fact,
     confidence: best.score,
     source: staticImageMode ? 'image' : 'camera',
-    model:'COCO-SSD',
-    databaseSource: dbRule?.databaseSource || 'fallback',
-    databaseObjectId: dbRule?.databaseObjectId || null,
-    databaseVariantId: dbRule?.databaseVariantId || null,
-    databaseMaterialId: dbRule?.databaseMaterialId || null,
-    databaseCategoryId: dbRule?.databaseCategoryId || null,
-    databaseImageUrl: dbRule?.databaseImageUrl || null
+    model: 'COCO-SSD',
+    databaseSource: 'supabase',
+    databaseObjectId: dbRule.databaseObjectId,
+    databaseVariantId: dbRule.databaseVariantId || null,
+    databaseMaterialId: dbRule.databaseMaterialId || null,
+    databaseCategoryId: dbRule.databaseCategoryId || null,
+    databaseImageUrl: dbRule.databaseImageUrl || null,
+    categoryColor: dbRule.category_color_hex || CATEGORY_COLORS[dbRule.category_name] || 'var(--primary-dark)'
   };
 
-  setDetectionCard(lastDetectionData);
-  const soundKey = `${lastDetectionData.name}|${Math.round(lastDetectionData.confidence*100)}`;
-  if (soundKey !== lastSoundedDetection && !staticImageMode) { lastSoundedDetection = soundKey; playEcoSound('detect'); }
+  lastDetectionData = result;
+  setDetectionCard(result);
+
+  const soundKey = `${result.name}|${Math.round(result.confidence * 100)}`;
+  if (soundKey !== lastSoundedDetection && !staticImageMode) {
+    lastSoundedDetection = soundKey;
+    playEcoSound('detect');
+  }
 }
+
 function setDetectionCard(data) {
   document.getElementById('detName').textContent = data.name;
   document.getElementById('detType').textContent = data.category;
@@ -774,15 +867,9 @@ function setDetectionCard(data) {
   document.getElementById('detTime').textContent = data.time;
   document.getElementById('detFact').textContent = data.fact;
   document.getElementById('detConfidence').textContent = data.confidence == null ? '-' : `${(data.confidence*100).toFixed(0)}%`;
-  document.getElementById('detName').style.color = CATEGORY_COLORS[data.category] || 'var(--primary-dark)';
+  document.getElementById('detName').style.color = data.categoryColor || 'var(--primary-dark)';
 }
 function setDetectionStatus(text) { const el=document.getElementById('detFact'); if (el && !lastDetectionData) el.textContent=text; }
-function resolveWasteRule(label) {
-  const key = normalizeKey(label);
-  const alias = ALIASES[key] || ALIASES[String(label || '').toLowerCase()] || null;
-  return WASTE_RULES[alias] || WASTE_RULES.indeterminado;
-}
-
 function normalizeKey(value) {
   return String(value || '').trim().toLowerCase().replace(/-/g, '_');
 }
@@ -795,13 +882,16 @@ function normalizeSupabaseAlias(value) {
     .replace(/\s+/g, ' ');
 }
 
-function specialWasteToUi(specialWaste) {
+function formatDatabaseSpecialWaste(specialWaste) {
   const item = Array.isArray(specialWaste) ? specialWaste[0] : null;
   if (!item) return null;
-  const name = String(item.name || '').toLowerCase();
-  if (name.includes('eletrôn')) return { category:'Eletrônico', bin:'📦 Coleta especial', dest:item.destination || 'Logística reversa', time:'Não recomendado calcular', fact:item.warning || item.instruction || 'Este item possui descarte especial.' };
-  if (name.includes('pilha') || name.includes('bateria')) return { category:'Eletrônico', bin:'📦 Coleta especial', dest:item.destination || 'Logística reversa', time:'Não recomendado calcular', fact:item.warning || item.instruction || 'Pilhas e baterias exigem coleta específica.' };
-  return { category:'Indeterminado', bin:'📦 Coleta especial', dest:item.destination || 'Coleta especial', time:'Não recomendado calcular', fact:item.warning || item.instruction || 'Este item exige uma destinação especial.' };
+
+  const category = item.name || 'Descarte especial';
+  const bin = item.destination ? `📦 ${item.destination}` : '📦 Coleta especial';
+  const time = 'Não recomendado calcular';
+  const fact = item.warning || item.instruction || 'Este item exige uma destinação especial.';
+
+  return { category, bin, dest: item.destination || '-', time, fact };
 }
 
 async function resolveSupabaseClassification(label) {
@@ -824,11 +914,7 @@ async function resolveSupabaseClassification(label) {
     let aliases = null;
     let aliasError = null;
 
-    // 1) Tenta pela coluna normalizada.
-    ({
-      data: aliases,
-      error: aliasError
-    } = await supabaseClient
+    ({ data: aliases, error: aliasError } = await supabaseClient
       .from('object_aliases')
       .select('object_id, variant_id, alias, normalized_alias, confidence_hint, is_active')
       .eq('normalized_alias', normalized)
@@ -836,28 +922,47 @@ async function resolveSupabaseClassification(label) {
       .order('confidence_hint', { ascending: false, nullsFirst: false })
       .limit(10));
 
-    // 2) Fallback para a coluna alias. Isso cobre bases antigas
-    // que ainda não normalizaram acentos, hífens ou underscores.
-    if (!aliasError && (!aliases || aliases.length === 0)) {
-      ({
-        data: aliases,
-        error: aliasError
-      } = await supabaseClient
+    if (aliasError) throw aliasError;
+
+    if (!aliases?.length) {
+      ({ data: aliases, error: aliasError } = await supabaseClient
         .from('object_aliases')
         .select('object_id, variant_id, alias, normalized_alias, confidence_hint, is_active')
         .ilike('alias', label)
         .eq('is_active', true)
         .order('confidence_hint', { ascending: false, nullsFirst: false })
         .limit(10));
+
+      if (aliasError) throw aliasError;
     }
 
-    if (aliasError) throw aliasError;
+    let match = aliases?.[0] || null;
 
-    const match = aliases?.[0];
+    // Último recurso: procurar a classe original do COCO-SSD diretamente no banco.
+    // Isso continua sendo uma consulta ao Supabase e não um mapeamento local.
+    if (!match) {
+      const { data: objectsByClass, error: classError } = await supabaseClient
+        .from('objects')
+        .select('id, name, detection_class, is_ambiguous, is_active')
+        .eq('detection_class', label)
+        .eq('is_active', true)
+        .order('is_ambiguous', { ascending: true })
+        .limit(1);
+
+      if (classError) throw classError;
+
+      if (objectsByClass?.length) {
+        match = {
+          object_id: objectsByClass[0].id,
+          variant_id: null
+        };
+      }
+    }
 
     if (!match) {
-      supabaseObjectCache.set(normalized, null);
-      return null;
+      const notFound = { status: 'not-found' };
+      supabaseObjectCache.set(normalized, notFound);
+      return notFound;
     }
 
     let record = null;
@@ -885,38 +990,16 @@ async function resolveSupabaseClassification(label) {
     }
 
     if (!record) {
-      supabaseObjectCache.set(normalized, null);
-      return null;
+      const notFound = { status: 'not-found' };
+      supabaseObjectCache.set(normalized, notFound);
+      return notFound;
     }
 
-    const special = specialWasteToUi(record.special_waste);
-
-    const resolved = special || (
-      record.category_name
-        ? {
-            category: record.category_name,
-            bin: record.bin_name
-              ? `${record.bin_color_name ? record.bin_color_name + ' ' : ''}${record.bin_name}`
-              : '📌 Verificar',
-            dest: record.destination_name || 'Consulta local',
-            time: record.decomposition_text || '—',
-            fact:
-              record.educational_text ||
-              record.recommendation ||
-              'Informação obtida da base de conhecimento EcoScan.'
-          }
-        : {
-            category: 'Indeterminado',
-            bin: '📌 Verificar',
-            dest: 'Consulta local',
-            time: '—',
-            fact:
-              'O banco reconheceu o objeto, mas ele possui mais de uma possibilidade de material. A identificação do material precisa de evidências adicionais.'
-          }
-    );
+    const specialWasteUi = formatDatabaseSpecialWaste(record.special_waste);
 
     const result = {
-      ...resolved,
+      ...record,
+      specialWasteUi,
       databaseName: record.variant_name || record.object_name,
       databaseObjectId: record.object_id,
       databaseVariantId: record.variant_id || null,
@@ -932,15 +1015,8 @@ async function resolveSupabaseClassification(label) {
     return result;
 
   } catch (error) {
-    console.error(
-      `EcoScan: erro ao consultar Supabase para "${label}".`,
-      error
-    );
-
-    // Não guarda falhas transitórias em cache. Assim a próxima
-    // tentativa poderá consultar novamente o banco.
+    console.error(`EcoScan: erro ao consultar Supabase para "${label}".`, error);
     return null;
-
   } finally {
     supabasePendingLabels.delete(normalized);
   }
@@ -948,17 +1024,22 @@ async function resolveSupabaseClassification(label) {
 
 function queueSupabaseClassification(label) {
   if (!supabaseReady) return;
+  const normalized = normalizeSupabaseAlias(label);
+  if (supabasePendingLabels.has(normalized)) return;
+
   resolveSupabaseClassification(label).then(result => {
-    if (!result) return;
-    // O próximo ciclo da câmera usa o cache sem gerar uma nova consulta.
-    if (lastPredictions?.[0]?.class === label) updateDetectionCard(lastPredictions);
+    if (lastPredictions?.[0]?.class === label) {
+      updateDetectionCard(lastPredictions);
+      drawPredictions(lastPredictions);
+    }
+    return result;
   });
 }
 function prettifyClassName(label) { const key=normalizeKey(label); return CLASS_NAMES_PT[key] || String(label || '').replace(/_/g,' ').replace(/\b\w/g, l => l.toUpperCase()); }
 
 async function saveCurrentDetection() {
   if (!currentUser) return setDetectionStatus('Entre na sua conta para salvar uma detecção.');
-  if (!lastDetectionData || !lastDetectionData.name || lastDetectionData.category === '-' || lastDetectionData.category === 'Indeterminado') {
+  if (!lastDetectionData || lastDetectionData.databaseSource !== 'supabase' || !lastDetectionData.name || lastDetectionData.category === '-' || lastDetectionData.category === 'Indeterminado') {
     return setDetectionStatus('Faça uma detecção válida antes de salvar.');
   }
   saveBtn.disabled = true;
