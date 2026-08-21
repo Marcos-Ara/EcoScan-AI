@@ -1,6 +1,9 @@
 const splash = document.getElementById('ecoscanSplash');
 const screens = [...document.querySelectorAll('.screen')];
 const firebaseConfig = window.ECOSCAN_FIREBASE_CONFIG || {};
+const SUPABASE_URL = window.ECOSCAN_SUPABASE_URL || '';
+const SUPABASE_ANON_KEY = window.ECOSCAN_SUPABASE_ANON_KEY || '';
+const SUPABASE_ENABLED = window.ECOSCAN_ENABLE_SUPABASE !== false;
 const API_BASE = (window.ECOSCAN_API_BASE || 'http://127.0.0.1:8000').replace(/\/$/, '');
 
 const startScanBtn = document.getElementById('startScanBtn');
@@ -39,6 +42,10 @@ const overlay = document.getElementById('overlay');
 const cameraFallback = document.getElementById('cameraFallback');
 
 let auth = null;
+let supabaseClient = null;
+let supabaseReady = false;
+const supabaseObjectCache = new Map();
+const supabasePendingLabels = new Set();
 let currentUser = null;
 let authReady = false;
 let currentScreen = 'loginScreen';
@@ -90,6 +97,7 @@ const ALIASES = {
 };
 
 init();
+initializeSupabase();
 initializeFirebase();
 
 function init() {
@@ -143,6 +151,70 @@ function init() {
   window.addEventListener('beforeunload', stopCamera);
   renderCreators();
   if (window.lucide) lucide.createIcons();
+}
+
+async function initializeSupabase() {
+  if (!SUPABASE_ENABLED) {
+    console.info('EcoScan: integração Supabase desativada.');
+    return;
+  }
+
+  if (!window.supabase?.createClient) {
+    console.error('EcoScan: SDK do Supabase não foi carregado.');
+    return;
+  }
+
+  if (
+    !SUPABASE_URL ||
+    SUPABASE_URL.includes('SEU-PROJETO') ||
+    !SUPABASE_ANON_KEY ||
+    SUPABASE_ANON_KEY.includes('SUA_CHAVE')
+  ) {
+    console.error('EcoScan: URL/chave do Supabase não configuradas.');
+    return;
+  }
+
+  try {
+    supabaseClient = window.supabase.createClient(
+      SUPABASE_URL,
+      SUPABASE_ANON_KEY,
+      {
+        auth: {
+          persistSession: false,
+          autoRefreshToken: false
+        }
+      }
+    );
+
+    // O cliente foi criado; agora fazemos uma consulta real ao banco.
+    const { error } = await supabaseClient
+      .from('categories')
+      .select('id')
+      .limit(1);
+
+    if (error) {
+      throw error;
+    }
+
+    supabaseReady = true;
+    window.ECOSCAN_SUPABASE_STATUS = 'connected';
+    window.ecoscanSupabase = supabaseClient;
+
+    console.info(
+      'EcoScan: Supabase conectado com sucesso.',
+      SUPABASE_URL
+    );
+  } catch (error) {
+    supabaseClient = null;
+    supabaseReady = false;
+    window.ecoscanSupabase = null;
+    window.ECOSCAN_SUPABASE_STATUS = 'error';
+
+    console.error(
+      'EcoScan: Supabase não está acessível. Verifique RLS, políticas e chave anon/public.',
+      error
+    );
+  }
 }
 
 function initializeFirebase() {
@@ -665,8 +737,31 @@ function updateDetectionCard(predictions) {
     setDetectionCard({ name:'Nenhum objeto detectado', category:'-', bin:'-', dest:'-', time:'-', fact:'Aponte para um objeto reconhecido ou selecione outra imagem.', confidence:null });
     return;
   }
-  const rule = resolveWasteRule(best.class);
-  lastDetectionData = { name: prettifyClassName(best.class), category:rule.category, bin:rule.bin, dest:rule.dest, time:rule.time, fact:rule.fact, confidence:best.score, source: staticImageMode ? 'image' : 'camera', model:'COCO-SSD' };
+
+  const normalized = normalizeSupabaseAlias(best.class);
+  const dbRule = supabaseObjectCache.get(normalized);
+  if (supabaseReady && !supabaseObjectCache.has(normalized)) queueSupabaseClassification(best.class);
+
+  const rule = dbRule || resolveWasteRule(best.class);
+  const displayName = dbRule?.databaseName || prettifyClassName(best.class);
+  lastDetectionData = {
+    name: displayName,
+    category: rule.category,
+    bin: rule.bin,
+    dest: rule.dest,
+    time: rule.time,
+    fact: rule.fact,
+    confidence: best.score,
+    source: staticImageMode ? 'image' : 'camera',
+    model:'COCO-SSD',
+    databaseSource: dbRule?.databaseSource || 'fallback',
+    databaseObjectId: dbRule?.databaseObjectId || null,
+    databaseVariantId: dbRule?.databaseVariantId || null,
+    databaseMaterialId: dbRule?.databaseMaterialId || null,
+    databaseCategoryId: dbRule?.databaseCategoryId || null,
+    databaseImageUrl: dbRule?.databaseImageUrl || null
+  };
+
   setDetectionCard(lastDetectionData);
   const soundKey = `${lastDetectionData.name}|${Math.round(lastDetectionData.confidence*100)}`;
   if (soundKey !== lastSoundedDetection && !staticImageMode) { lastSoundedDetection = soundKey; playEcoSound('detect'); }
@@ -683,10 +778,182 @@ function setDetectionCard(data) {
 }
 function setDetectionStatus(text) { const el=document.getElementById('detFact'); if (el && !lastDetectionData) el.textContent=text; }
 function resolveWasteRule(label) {
-  const key = normalizeKey(label); const alias = ALIASES[key] || ALIASES[String(label||'').toLowerCase()] || null;
+  const key = normalizeKey(label);
+  const alias = ALIASES[key] || ALIASES[String(label || '').toLowerCase()] || null;
   return WASTE_RULES[alias] || WASTE_RULES.indeterminado;
 }
-function normalizeKey(value) { return String(value || '').trim().toLowerCase().replace(/-/g,'_'); }
+
+function normalizeKey(value) {
+  return String(value || '').trim().toLowerCase().replace(/-/g, '_');
+}
+
+function normalizeSupabaseAlias(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ');
+}
+
+function specialWasteToUi(specialWaste) {
+  const item = Array.isArray(specialWaste) ? specialWaste[0] : null;
+  if (!item) return null;
+  const name = String(item.name || '').toLowerCase();
+  if (name.includes('eletrôn')) return { category:'Eletrônico', bin:'📦 Coleta especial', dest:item.destination || 'Logística reversa', time:'Não recomendado calcular', fact:item.warning || item.instruction || 'Este item possui descarte especial.' };
+  if (name.includes('pilha') || name.includes('bateria')) return { category:'Eletrônico', bin:'📦 Coleta especial', dest:item.destination || 'Logística reversa', time:'Não recomendado calcular', fact:item.warning || item.instruction || 'Pilhas e baterias exigem coleta específica.' };
+  return { category:'Indeterminado', bin:'📦 Coleta especial', dest:item.destination || 'Coleta especial', time:'Não recomendado calcular', fact:item.warning || item.instruction || 'Este item exige uma destinação especial.' };
+}
+
+async function resolveSupabaseClassification(label) {
+  if (!supabaseReady || !supabaseClient) return null;
+
+  const normalized = normalizeSupabaseAlias(label);
+  if (!normalized) return null;
+
+  if (supabaseObjectCache.has(normalized)) {
+    return supabaseObjectCache.get(normalized);
+  }
+
+  if (supabasePendingLabels.has(normalized)) {
+    return null;
+  }
+
+  supabasePendingLabels.add(normalized);
+
+  try {
+    let aliases = null;
+    let aliasError = null;
+
+    // 1) Tenta pela coluna normalizada.
+    ({
+      data: aliases,
+      error: aliasError
+    } = await supabaseClient
+      .from('object_aliases')
+      .select('object_id, variant_id, alias, normalized_alias, confidence_hint, is_active')
+      .eq('normalized_alias', normalized)
+      .eq('is_active', true)
+      .order('confidence_hint', { ascending: false, nullsFirst: false })
+      .limit(10));
+
+    // 2) Fallback para a coluna alias. Isso cobre bases antigas
+    // que ainda não normalizaram acentos, hífens ou underscores.
+    if (!aliasError && (!aliases || aliases.length === 0)) {
+      ({
+        data: aliases,
+        error: aliasError
+      } = await supabaseClient
+        .from('object_aliases')
+        .select('object_id, variant_id, alias, normalized_alias, confidence_hint, is_active')
+        .ilike('alias', label)
+        .eq('is_active', true)
+        .order('confidence_hint', { ascending: false, nullsFirst: false })
+        .limit(10));
+    }
+
+    if (aliasError) throw aliasError;
+
+    const match = aliases?.[0];
+
+    if (!match) {
+      supabaseObjectCache.set(normalized, null);
+      return null;
+    }
+
+    let record = null;
+
+    if (match.variant_id) {
+      const { data, error } = await supabaseClient
+        .from('ecoscan_variant_master')
+        .select('*')
+        .eq('variant_id', match.variant_id)
+        .maybeSingle();
+
+      if (error) throw error;
+      record = data ? { type: 'variant', ...data } : null;
+    }
+
+    if (!record) {
+      const { data, error } = await supabaseClient
+        .from('ecoscan_object_master')
+        .select('*')
+        .eq('object_id', match.object_id)
+        .maybeSingle();
+
+      if (error) throw error;
+      record = data ? { type: 'object', ...data } : null;
+    }
+
+    if (!record) {
+      supabaseObjectCache.set(normalized, null);
+      return null;
+    }
+
+    const special = specialWasteToUi(record.special_waste);
+
+    const resolved = special || (
+      record.category_name
+        ? {
+            category: record.category_name,
+            bin: record.bin_name
+              ? `${record.bin_color_name ? record.bin_color_name + ' ' : ''}${record.bin_name}`
+              : '📌 Verificar',
+            dest: record.destination_name || 'Consulta local',
+            time: record.decomposition_text || '—',
+            fact:
+              record.educational_text ||
+              record.recommendation ||
+              'Informação obtida da base de conhecimento EcoScan.'
+          }
+        : {
+            category: 'Indeterminado',
+            bin: '📌 Verificar',
+            dest: 'Consulta local',
+            time: '—',
+            fact:
+              'O banco reconheceu o objeto, mas ele possui mais de uma possibilidade de material. A identificação do material precisa de evidências adicionais.'
+          }
+    );
+
+    const result = {
+      ...resolved,
+      databaseName: record.variant_name || record.object_name,
+      databaseObjectId: record.object_id,
+      databaseVariantId: record.variant_id || null,
+      databaseMaterialId: record.material_id || null,
+      databaseCategoryId: record.category_id || null,
+      databaseImageUrl:
+        record.primary_image_url ||
+        (Array.isArray(record.images) ? record.images[0]?.url || null : null),
+      databaseSource: 'supabase'
+    };
+
+    supabaseObjectCache.set(normalized, result);
+    return result;
+
+  } catch (error) {
+    console.error(
+      `EcoScan: erro ao consultar Supabase para "${label}".`,
+      error
+    );
+
+    // Não guarda falhas transitórias em cache. Assim a próxima
+    // tentativa poderá consultar novamente o banco.
+    return null;
+
+  } finally {
+    supabasePendingLabels.delete(normalized);
+  }
+}
+
+function queueSupabaseClassification(label) {
+  if (!supabaseReady) return;
+  resolveSupabaseClassification(label).then(result => {
+    if (!result) return;
+    // O próximo ciclo da câmera usa o cache sem gerar uma nova consulta.
+    if (lastPredictions?.[0]?.class === label) updateDetectionCard(lastPredictions);
+  });
+}
 function prettifyClassName(label) { const key=normalizeKey(label); return CLASS_NAMES_PT[key] || String(label || '').replace(/_/g,' ').replace(/\b\w/g, l => l.toUpperCase()); }
 
 async function saveCurrentDetection() {
