@@ -44,6 +44,7 @@ const cameraFallback = document.getElementById('cameraFallback');
 let auth = null;
 let supabaseClient = null;
 let supabaseReady = false;
+window.ECOSCAN_SUPABASE_STATUS = 'connecting';
 const supabaseObjectCache = new Map();
 const supabasePendingLabels = new Set();
 let currentUser = null;
@@ -68,23 +69,14 @@ let mapItems = [];
 let activeMapFilter = 'all';
 let selectedHistoryItem = null;
 
-const CATEGORY_COLORS = {
-  Orgânico: '#8b5a2b',
-  Papel: '#2f6ef3',
-  Plástico: '#df4b42',
-  Vidro: '#43a047',
-  Metal: '#d6a800',
-  Eletrônico: '#7c3aed',
-  Rejeito: '#5b6068',
-  Indeterminado: '#6b7280'
-};
-
-// Classes do modelo servem apenas como sinal bruto de detecção.
-// Nome, material, categoria, lixeira, destino e conteúdo educativo
-// precisam vir do Supabase. Não existe mais fallback local de item.
-const CLASS_NAMES_PT = {
-  person:'Pessoa', bicycle:'Bicicleta', car:'Carro', motorcycle:'Motocicleta', airplane:'Avião', bus:'Ônibus', train:'Trem', truck:'Caminhão', boat:'Barco', traffic_light:'Semáforo', fire_hydrant:'Hidrante', stop_sign:'Placa de parada', parking_meter:'Parquímetro', bench:'Banco', bird:'Pássaro', cat:'Gato', dog:'Cachorro', horse:'Cavalo', sheep:'Ovelha', cow:'Vaca', elephant:'Elefante', bear:'Urso', zebra:'Zebra', giraffe:'Girafa', backpack:'Mochila', umbrella:'Guarda-chuva', handbag:'Bolsa', tie:'Gravata', suitcase:'Mala', frisbee:'Frisbee', skis:'Esquis', snowboard:'Snowboard', sports_ball:'Bola', kite:'Pipa', baseball_bat:'Taco de beisebol', baseball_glove:'Luva de beisebol', skateboard:'Skate', surfboard:'Prancha de surfe', tennis_racket:'Raquete de tênis', bottle:'Garrafa', wine_glass:'Taça', cup:'Copo', fork:'Garfo', knife:'Faca', spoon:'Colher', bowl:'Tigela', banana:'Banana', apple:'Maçã', sandwich:'Sanduíche', orange:'Laranja', broccoli:'Brócolis', carrot:'Cenoura', hot_dog:'Cachorro-quente', pizza:'Pizza', donut:'Rosquinha', cake:'Bolo', chair:'Cadeira', couch:'Sofá', potted_plant:'Planta', bed:'Cama', dining_table:'Mesa de jantar', toilet:'Vaso sanitário', tv:'Televisão', laptop:'Notebook', mouse:'Mouse', remote:'Controle remoto', keyboard:'Teclado', cell_phone:'Celular', microwave:'Micro-ondas', oven:'Forno', toaster:'Torradeira', sink:'Pia', refrigerator:'Geladeira', book:'Livro', clock:'Relógio', vase:'Vaso', scissors:'Tesoura', teddy_bear:'Urso de pelúcia', hair_drier:'Secador de cabelo', toothbrush:'Escova de dentes'
-};
+// O COCO-SSD fornece somente o rótulo bruto da detecção.
+// Nome, material, categoria, lixeira, destino, regras, textos e imagens
+// dos itens vêm exclusivamente do Supabase.
+const COCO_MAX_BOXES = 20;
+const COCO_MIN_SCORE = 0.15;
+init();
+initializeFirebase();
+void initializeSupabase();
 
 function init() {
   if (splash) {
@@ -139,67 +131,19 @@ function init() {
   if (window.lucide) lucide.createIcons();
 }
 
-async function initializeSupabase() {
-  if (!SUPABASE_ENABLED) {
-    console.info('EcoScan: integração Supabase desativada.');
-    return;
-  }
-
-  if (!window.supabase?.createClient) {
-    console.error('EcoScan: SDK do Supabase não foi carregado.');
-    return;
-  }
-
-  if (
-    !SUPABASE_URL ||
-    SUPABASE_URL.includes('SEU-PROJETO') ||
-    !SUPABASE_ANON_KEY ||
-    SUPABASE_ANON_KEY.includes('SUA_CHAVE')
-  ) {
-    console.error('EcoScan: URL/chave do Supabase não configuradas.');
-    return;
-  }
-
+function initializeSupabase() {
+  if (!SUPABASE_ENABLED) return;
+  if (!window.supabase?.createClient) return;
+  if (!SUPABASE_URL || SUPABASE_URL.includes('SEU-PROJETO') || !SUPABASE_ANON_KEY || SUPABASE_ANON_KEY.includes('SUA_CHAVE')) return;
   try {
-    supabaseClient = window.supabase.createClient(
-      SUPABASE_URL,
-      SUPABASE_ANON_KEY,
-      {
-        auth: {
-          persistSession: false,
-          autoRefreshToken: false
-        }
-      }
-    );
-
-    // O cliente foi criado; agora fazemos uma consulta real ao banco.
-    const { error } = await supabaseClient
-      .from('categories')
-      .select('id')
-      .limit(1);
-
-    if (error) {
-      throw error;
-    }
-
+    supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+      auth: { persistSession: false, autoRefreshToken: false }
+    });
     supabaseReady = true;
-    window.ECOSCAN_SUPABASE_STATUS = 'connected';
-    window.ecoscanSupabase = supabaseClient;
-
-    console.info(
-      'EcoScan: Supabase conectado com sucesso.',
-      SUPABASE_URL
-    );
   } catch (error) {
+    console.warn('EcoScan: Supabase não pôde ser inicializado.', error);
     supabaseClient = null;
     supabaseReady = false;
-    window.ecoscanSupabase = null;
-    window.ECOSCAN_SUPABASE_STATUS = 'error';
-
-    console.error(
-      'EcoScan: Supabase não está acessível. Verifique RLS, políticas e chave anon/public.',
-      error
-    );
   }
 }
 
@@ -602,7 +546,7 @@ async function openCamera() {
   if (stream) return;
   try {
     if (!navigator.mediaDevices?.getUserMedia) throw new Error('Seu navegador não suporta câmera.');
-    if (!model) { setDetectionStatus('🤖 Carregando inteligência artificial...'); model = await cocoSsd.load(); }
+    if (!model) { setDetectionStatus('🤖 Carregando inteligência artificial...'); model = await cocoSsd.load({ base: 'mobilenet_v2' }); }
     stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: { ideal:'environment' }, width:{ ideal:1280 }, height:{ ideal:720 } }, audio:false });
     cameraFeed.srcObject = stream;
     await waitForVideoMetadata(cameraFeed);
@@ -639,7 +583,7 @@ async function startDetectionLoop() {
   while (detectionLoopActive && currentScreen === 'cameraScreen') {
     try {
       if (cameraFeed.readyState >= 2 && model) {
-        const predictions = await model.detect(cameraFeed);
+        const predictions = await model.detect(cameraFeed, COCO_MAX_BOXES, COCO_MIN_SCORE);
         lastPredictions = predictions || [];
         drawPredictions(lastPredictions);
         updateDetectionCard(lastPredictions);
@@ -679,7 +623,7 @@ function getCurrentCaptureLocation() {
 async function handleImageSelection(event) {
   const file = event.target.files?.[0]; if (!file) return;
   try {
-    if (!model) { setDetectionStatus('🤖 Carregando inteligência artificial...'); model = await cocoSsd.load(); }
+    if (!model) { setDetectionStatus('🤖 Carregando inteligência artificial...'); model = await cocoSsd.load({ base: 'mobilenet_v2' }); }
     const image = await loadImageFile(file);
     staticImageMode = true; stopCamera();
     cameraFeed.srcObject = null; cameraFeed.style.opacity = '0';
@@ -688,7 +632,7 @@ async function handleImageSelection(event) {
     overlay.width = image.naturalWidth;
     overlay.height = image.naturalHeight;
     lastScanImageDataUrl = imageToDataUrl(image, 480, 0.64);
-    const predictions = await model.detect(image);
+    const predictions = await model.detect(image, COCO_MAX_BOXES, COCO_MIN_SCORE);
     lastPredictions = predictions || [];
     drawPredictions(lastPredictions);
     updateDetectionCard(lastPredictions);
@@ -698,60 +642,28 @@ async function handleImageSelection(event) {
 }
 function loadImageFile(file) { return new Promise((resolve,reject) => { const url = URL.createObjectURL(file); const img = new Image(); img.onload=()=>{URL.revokeObjectURL(url); resolve(img)}; img.onerror=()=>{URL.revokeObjectURL(url); reject(new Error('Não foi possível abrir a imagem.'))}; img.src=url; }); }
 
-function getDatabaseRecordForLabel(label) {
-  const normalized = normalizeSupabaseAlias(label);
-  return supabaseObjectCache.get(normalized) || null;
-}
-
-function getPredictionColor(prediction) {
-  const record = getDatabaseRecordForLabel(prediction.class);
-  return record?.category_color_hex || CATEGORY_COLORS[record?.category_name] || '#6b7280';
-}
-
-function getPredictionDisplayName(prediction) {
-  const record = getDatabaseRecordForLabel(prediction.class);
-  if (record?.databaseName) return record.databaseName;
-  return 'Consultando base...';
-}
-
 function drawPredictions(predictions) {
   resizeOverlay();
   if (!overlay) return;
-  const ctx = overlay.getContext('2d');
-  ctx.clearRect(0, 0, overlay.width, overlay.height);
-  const top = (predictions || []).slice(0, 3);
+  const ctx = overlay.getContext('2d'); ctx.clearRect(0,0,overlay.width,overlay.height);
+  const top = predictions.slice(0,3);
   if (!top.length) return;
-
-  ctx.font = `700 ${Math.max(14, Math.round(overlay.width / 42))}px Outfit`;
-  ctx.lineWidth = 3;
-
+  ctx.font = `700 ${Math.max(14, Math.round(overlay.width / 42))}px Outfit`; ctx.lineWidth = 3;
   top.forEach(pred => {
-    const [x, y, width, height] = pred.bbox;
-    const text = `${getPredictionDisplayName(pred)} ${(pred.score * 100).toFixed(0)}%`;
-    const color = getPredictionColor(pred);
-
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
-    ctx.strokeRect(x, y, width, height);
-
-    const tw = ctx.measureText(text).width;
-    const ty = Math.max(24, y - 10);
-    ctx.fillRect(
-      x,
-      ty - ctx.measureText('Ag').actualBoundingBoxAscent - 7,
-      tw + 12,
-      30
-    );
-
-    ctx.fillStyle = '#fff';
-    ctx.fillText(text, x + 6, ty + 3);
+    const [x,y,width,height] = pred.bbox;
+    const text = `${prettifyClassName(pred.class)} ${(pred.score*100).toFixed(0)}%`;
+    const record = supabaseObjectCache.get(normalizeSupabaseAlias(pred.class));
+    const color = record?.category_color_hex || '#6b7280';
+    ctx.strokeStyle = color; ctx.fillStyle = color; ctx.strokeRect(x,y,width,height);
+    const tw = ctx.measureText(text).width; const ty = Math.max(24,y-10); ctx.fillRect(x,ty-ctx.measureText('Ag').actualBoundingBoxAscent-7,tw+12,30);
+    ctx.fillStyle='#fff'; ctx.fillText(text,x+6,ty+3);
   });
 }
 
 function updateDetectionCard(predictions) {
   const best = predictions?.[0];
 
-  if (!best || best.score < 0.15) {
+  if (!best || best.score < COCO_MIN_SCORE) {
     lastDetectionData = null;
     setDetectionCard({
       name: 'Nenhum objeto detectado',
@@ -760,21 +672,26 @@ function updateDetectionCard(predictions) {
       dest: '-',
       time: '-',
       fact: 'Aponte para um objeto reconhecido ou selecione outra imagem.',
-      confidence: null
+      confidence: null,
+      categoryColor: '#6b7280'
     });
     return;
   }
 
   if (!supabaseReady) {
     lastDetectionData = null;
+    const status = window.ECOSCAN_SUPABASE_STATUS;
     setDetectionCard({
-      name: prettifyClassName(best.class),
+      name: status === 'connecting' ? 'Conectando ao banco...' : 'Banco indisponível',
       category: '-',
       bin: '-',
       dest: '-',
       time: '-',
-      fact: 'A base de conhecimento do Supabase não está disponível.',
-      confidence: best.score
+      fact: status === 'connecting'
+        ? 'Aguarde enquanto o EcoScan conecta à base de conhecimento.'
+        : 'Não foi possível acessar a base de conhecimento do Supabase.',
+      confidence: best.score,
+      categoryColor: '#6b7280'
     });
     return;
   }
@@ -790,8 +707,9 @@ function updateDetectionCard(predictions) {
       bin: '-',
       dest: '-',
       time: '-',
-      fact: `A IA detectou ${prettifyClassName(best.class)}, consultando o banco de dados EcoScan.`,
-      confidence: best.score
+      fact: 'O COCO-SSD detectou o objeto. Consultando os dados no Supabase...',
+      confidence: best.score,
+      categoryColor: '#6b7280'
     });
     queueSupabaseClassification(best.class);
     return;
@@ -805,48 +723,63 @@ function updateDetectionCard(predictions) {
       bin: '-',
       dest: '-',
       time: '-',
-      fact: `A classe "${prettifyClassName(best.class)}" foi detectada pelo modelo, mas ainda não possui correspondência na base de conhecimento.`,
-      confidence: best.score
+      fact: `A classe "${prettifyClassName(best.class)}" foi detectada, mas não possui correspondência na base do Supabase.`,
+      confidence: best.score,
+      categoryColor: '#6b7280'
     });
     return;
   }
 
-  const dbRule = cached;
-  const rule = dbRule.specialWasteUi || (dbRule.category_name ? {
-    category: dbRule.category_name,
-    bin: dbRule.bin_name
-      ? `${dbRule.bin_color_name ? dbRule.bin_color_name + ' ' : ''}${dbRule.bin_name}`
+  if (!cached) {
+    lastDetectionData = null;
+    setDetectionCard({
+      name: 'Erro ao consultar banco',
+      category: '-',
+      bin: '-',
+      dest: '-',
+      time: '-',
+      fact: 'Não foi possível obter os dados deste item no Supabase.',
+      confidence: best.score,
+      categoryColor: '#6b7280'
+    });
+    return;
+  }
+
+  const dbRule = cached.specialWasteUi || (cached.category_name ? {
+    category: cached.category_name,
+    bin: cached.bin_name
+      ? `${cached.bin_color_name ? cached.bin_color_name + ' ' : ''}${cached.bin_name}`
       : '-',
-    dest: dbRule.destination_name || '-',
-    time: dbRule.decomposition_text || '—',
-    fact: dbRule.educational_text || dbRule.recommendation || 'Informação obtida da base de conhecimento EcoScan.'
+    dest: cached.destination_name || '-',
+    time: cached.decomposition_text || '—',
+    fact: cached.educational_text || cached.recommendation || 'Informação obtida da base de conhecimento EcoScan.'
   } : {
     category: 'Indeterminado',
     bin: '-',
     dest: '-',
     time: '—',
-    fact: dbRule.variant_count > 0
-      ? `A base encontrou ${dbRule.variant_count} variante(s) para este objeto. São necessárias evidências adicionais para definir o material.`
+    fact: cached.variant_count > 0
+      ? `A base encontrou ${cached.variant_count} variante(s). São necessárias evidências adicionais para definir o material.`
       : 'O objeto está cadastrado, mas ainda não possui material ou regra de descarte definida na base.'
   });
 
   const result = {
-    name: dbRule.databaseName,
-    category: rule.category,
-    bin: rule.bin,
-    dest: rule.dest,
-    time: rule.time,
-    fact: rule.fact,
+    name: cached.databaseName,
+    category: dbRule.category,
+    bin: dbRule.bin,
+    dest: dbRule.dest,
+    time: dbRule.time,
+    fact: dbRule.fact,
     confidence: best.score,
     source: staticImageMode ? 'image' : 'camera',
     model: 'COCO-SSD',
     databaseSource: 'supabase',
-    databaseObjectId: dbRule.databaseObjectId,
-    databaseVariantId: dbRule.databaseVariantId || null,
-    databaseMaterialId: dbRule.databaseMaterialId || null,
-    databaseCategoryId: dbRule.databaseCategoryId || null,
-    databaseImageUrl: dbRule.databaseImageUrl || null,
-    categoryColor: dbRule.category_color_hex || CATEGORY_COLORS[dbRule.category_name] || 'var(--primary-dark)'
+    databaseObjectId: cached.databaseObjectId,
+    databaseVariantId: cached.databaseVariantId || null,
+    databaseMaterialId: cached.databaseMaterialId || null,
+    databaseCategoryId: cached.databaseCategoryId || null,
+    databaseImageUrl: cached.databaseImageUrl || null,
+    categoryColor: cached.category_color_hex || '#6b7280'
   };
 
   lastDetectionData = result;
@@ -858,7 +791,6 @@ function updateDetectionCard(predictions) {
     playEcoSound('detect');
   }
 }
-
 function setDetectionCard(data) {
   document.getElementById('detName').textContent = data.name;
   document.getElementById('detType').textContent = data.category;
@@ -882,16 +814,17 @@ function normalizeSupabaseAlias(value) {
     .replace(/\s+/g, ' ');
 }
 
-function formatDatabaseSpecialWaste(specialWaste) {
+function specialWasteToUi(specialWaste) {
   const item = Array.isArray(specialWaste) ? specialWaste[0] : null;
   if (!item) return null;
 
-  const category = item.name || 'Descarte especial';
-  const bin = item.destination ? `📦 ${item.destination}` : '📦 Coleta especial';
-  const time = 'Não recomendado calcular';
-  const fact = item.warning || item.instruction || 'Este item exige uma destinação especial.';
-
-  return { category, bin, dest: item.destination || '-', time, fact };
+  return {
+    category: item.name || 'Descarte especial',
+    bin: item.destination ? `📦 ${item.destination}` : '📦 Coleta especial',
+    dest: item.destination || '-',
+    time: 'Não recomendado calcular',
+    fact: item.warning || item.instruction || 'Este item exige uma destinação especial.'
+  };
 }
 
 async function resolveSupabaseClassification(label) {
@@ -938,8 +871,7 @@ async function resolveSupabaseClassification(label) {
 
     let match = aliases?.[0] || null;
 
-    // Último recurso: procurar a classe original do COCO-SSD diretamente no banco.
-    // Isso continua sendo uma consulta ao Supabase e não um mapeamento local.
+    // Último recurso: detection_class também é lido do banco.
     if (!match) {
       const { data: objectsByClass, error: classError } = await supabaseClient
         .from('objects')
@@ -952,10 +884,7 @@ async function resolveSupabaseClassification(label) {
       if (classError) throw classError;
 
       if (objectsByClass?.length) {
-        match = {
-          object_id: objectsByClass[0].id,
-          variant_id: null
-        };
+        match = { object_id: objectsByClass[0].id, variant_id: null };
       }
     }
 
@@ -995,7 +924,7 @@ async function resolveSupabaseClassification(label) {
       return notFound;
     }
 
-    const specialWasteUi = formatDatabaseSpecialWaste(record.special_waste);
+    const specialWasteUi = specialWasteToUi(record.special_waste);
 
     const result = {
       ...record,
@@ -1016,7 +945,9 @@ async function resolveSupabaseClassification(label) {
 
   } catch (error) {
     console.error(`EcoScan: erro ao consultar Supabase para "${label}".`, error);
-    return null;
+    const failed = { status: 'error', error: error?.message || 'Falha na consulta.' };
+    supabaseObjectCache.set(normalized, failed);
+    return failed;
   } finally {
     supabasePendingLabels.delete(normalized);
   }
@@ -1024,18 +955,16 @@ async function resolveSupabaseClassification(label) {
 
 function queueSupabaseClassification(label) {
   if (!supabaseReady) return;
-  const normalized = normalizeSupabaseAlias(label);
-  if (supabasePendingLabels.has(normalized)) return;
-
   resolveSupabaseClassification(label).then(result => {
+    if (!result) return;
+    // O próximo ciclo da câmera usa o cache sem gerar uma nova consulta.
     if (lastPredictions?.[0]?.class === label) {
       updateDetectionCard(lastPredictions);
       drawPredictions(lastPredictions);
     }
-    return result;
   });
 }
-function prettifyClassName(label) { const key=normalizeKey(label); return CLASS_NAMES_PT[key] || String(label || '').replace(/_/g,' ').replace(/\b\w/g, l => l.toUpperCase()); }
+function prettifyClassName(label) { return String(label || '').replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase()); }
 
 async function saveCurrentDetection() {
   if (!currentUser) return setDetectionStatus('Entre na sua conta para salvar uma detecção.');
